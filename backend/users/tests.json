@@ -1,0 +1,20 @@
+{
+  "tests": [
+    {
+      "name": "Update user theme",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "update_theme",
+        "userId": 1,
+        "theme": "red"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true,
+        "theme": "string"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

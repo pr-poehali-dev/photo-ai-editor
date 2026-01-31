@@ -1,0 +1,22 @@
+{
+  "tests": [
+    {
+      "name": "Create new project",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "create",
+        "userId": 1,
+        "title": "Мой проект"
+      },
+      "expectedStatus": 201,
+      "expectedBody": {
+        "project": {
+          "id": "number",
+          "title": "string"
+        }
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

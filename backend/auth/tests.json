@@ -1,0 +1,47 @@
+{
+  "tests": [
+    {
+      "name": "Register new user",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "register",
+        "phone": "+79991234567",
+        "firstName": "Тест",
+        "lastName": "Тестов",
+        "isChild": false
+      },
+      "expectedStatus": 201,
+      "expectedBody": {
+        "user": {
+          "id": "number",
+          "phone": "string",
+          "firstName": "string",
+          "lastName": "string",
+          "isChild": "boolean",
+          "theme": "string"
+        }
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Register child user with family code",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "register",
+        "phone": "+79997777777",
+        "firstName": "Ребенок",
+        "lastName": "Тестов",
+        "isChild": true
+      },
+      "expectedStatus": 201,
+      "expectedBody": {
+        "user": {
+          "familyCode": "string"
+        }
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

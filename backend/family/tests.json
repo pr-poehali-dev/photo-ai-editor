@@ -1,0 +1,18 @@
+{
+  "tests": [
+    {
+      "name": "Get family code for child",
+      "method": "GET",
+      "path": "/",
+      "queryStringParameters": {
+        "userId": "1",
+        "action": "get_code"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "familyCode": "string"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

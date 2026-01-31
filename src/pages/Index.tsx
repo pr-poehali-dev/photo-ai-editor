@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,43 +7,256 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Icon from '@/components/ui/icon';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
+import type { User, Project } from '@/types';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+const THEMES = [
+  { id: 'default', name: 'Обычная', colors: ['#8B5CF6', '#0EA5E9'] },
+  { id: 'red', name: 'Красная', colors: ['#DC2626', '#EF4444'] },
+  { id: 'blue', name: 'Синяя', colors: ['#2563EB', '#3B82F6'] },
+  { id: 'yellow', name: 'Жёлтая', colors: ['#CA8A04', '#EAB308'] },
+  { id: 'pink', name: 'Розовая', colors: ['#DB2777', '#EC4899'] },
+  { id: 'green', name: 'Зелёная', colors: ['#16A34A', '#22C55E'] },
+  { id: 'kids', name: 'Для детей 🌈', colors: ['#A855F7', '#F97316'] },
+];
+
+const STICKERS = [
+  { emoji: '😊', name: 'Смайлик' },
+  { emoji: '❤️', name: 'Сердце' },
+  { emoji: '⭐', name: 'Звезда' },
+  { emoji: '🔥', name: 'Огонь' },
+  { emoji: '🌈', name: 'Радуга' },
+  { emoji: '☁️', name: 'Облако' },
+  { emoji: '🦋', name: 'Бабочка' },
+  { emoji: '🎨', name: 'Палитра' },
+  { emoji: '✨', name: 'Магия' },
+  { emoji: '🚀', name: 'Ракета' },
+];
 
 const Index = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const [isLogin, setIsLogin] = useState(true);
-  const [activeTab, setActiveTab] = useState('editor');
+  const [phone, setPhone] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [isChildAccount, setIsChildAccount] = useState(false);
+  const [activeTab, setActiveTab] = useState('home');
+  const [projects, setProjects] = useState<Project[]>([]);
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
-  const [brightness, setBrightness] = useState([100]);
-  const [contrast, setContrast] = useState([100]);
-  const [saturation, setSaturation] = useState([100]);
+  const [currentImage, setCurrentImage] = useState<string | null>(null);
+  const [familyCode, setFamilyCode] = useState('');
+  const [children, setChildren] = useState<any[]>([]);
+  const [showFamilyDialog, setShowFamilyDialog] = useState(false);
+  const [inputFamilyCode, setInputFamilyCode] = useState('');
+  const [childrenProjects, setChildrenProjects] = useState<Project[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawColor, setDrawColor] = useState('#8B5CF6');
+  const [drawWidth, setDrawWidth] = useState(5);
+  const [selectedSticker, setSelectedSticker] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  const tools = [
-    { id: 'animate', icon: 'Sparkles', label: 'Анимация', color: 'text-purple-400' },
-    { id: 'draw', icon: 'Pencil', label: 'Рисование', color: 'text-blue-400' },
-    { id: 'filters', icon: 'Contrast', label: 'Фильтры', color: 'text-pink-400' },
-    { id: 'effects', icon: 'Wand2', label: 'Эффекты', color: 'text-green-400' },
-    { id: 'stickers', icon: 'Smile', label: 'Стикеры', color: 'text-yellow-400' },
-    { id: 'ai', icon: 'Brain', label: 'AI Tools', color: 'text-cyan-400' },
-  ];
+  useEffect(() => {
+    const savedUser = localStorage.getItem('photoStudioUser');
+    if (savedUser) {
+      const parsedUser = JSON.parse(savedUser);
+      setUser(parsedUser);
+      loadProjects(parsedUser.id);
+      if (parsedUser.isChild) {
+        loadFamilyCode(parsedUser.id);
+      } else {
+        loadChildren(parsedUser.id);
+        loadChildrenProjects(parsedUser.id);
+      }
+      document.documentElement.setAttribute('data-theme', parsedUser.theme || 'default');
+    }
+  }, []);
 
-  const filters = [
-    { name: 'Оригинал', filter: 'none' },
-    { name: 'Черно-белое', filter: 'grayscale(100%)' },
-    { name: 'Сепия', filter: 'sepia(100%)' },
-    { name: 'Винтаж', filter: 'sepia(50%) contrast(120%)' },
-    { name: 'Яркость', filter: 'brightness(120%) saturate(130%)' },
-    { name: 'Холод', filter: 'hue-rotate(180deg)' },
-  ];
+  const loadProjects = async (userId: number) => {
+    const data = await api.projects.list(userId);
+    if (data.projects) setProjects(data.projects);
+  };
 
-  if (!isAuthenticated) {
+  const loadFamilyCode = async (userId: number) => {
+    const data = await api.family.getCode(userId);
+    if (data.familyCode) setFamilyCode(data.familyCode);
+  };
+
+  const loadChildren = async (userId: number) => {
+    const data = await api.family.getChildren(userId);
+    if (data.children) setChildren(data.children);
+  };
+
+  const loadChildrenProjects = async (userId: number) => {
+    const data = await api.projects.getChildrenProjects(userId);
+    if (data.projects) setChildrenProjects(data.projects);
+  };
+
+  const handleLogin = async () => {
+    try {
+      const data = await api.auth.login(phone);
+      if (data.user) {
+        setUser(data.user);
+        localStorage.setItem('photoStudioUser', JSON.stringify(data.user));
+        loadProjects(data.user.id);
+        document.documentElement.setAttribute('data-theme', data.user.theme || 'default');
+        if (data.user.isChild) {
+          loadFamilyCode(data.user.id);
+        } else {
+          loadChildren(data.user.id);
+          loadChildrenProjects(data.user.id);
+        }
+      }
+    } catch (error) {
+      alert('Пользователь не найден');
+    }
+  };
+
+  const handleRegister = async () => {
+    try {
+      const data = await api.auth.register(phone, firstName, lastName, isChildAccount);
+      if (data.user) {
+        setUser(data.user);
+        localStorage.setItem('photoStudioUser', JSON.stringify(data.user));
+        if (data.user.familyCode) {
+          setFamilyCode(data.user.familyCode);
+        }
+        document.documentElement.setAttribute('data-theme', data.user.theme || 'default');
+      }
+    } catch (error) {
+      alert('Ошибка регистрации');
+    }
+  };
+
+  const handleThemeChange = async (themeId: string) => {
+    if (!user) return;
+    await api.users.updateTheme(user.id, themeId);
+    const updatedUser = { ...user, theme: themeId };
+    setUser(updatedUser);
+    localStorage.setItem('photoStudioUser', JSON.stringify(updatedUser));
+    document.documentElement.setAttribute('data-theme', themeId);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      setCurrentImage(base64);
+      
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.onload = () => {
+          canvas.width = 800;
+          canvas.height = 600;
+          ctx?.drawImage(img, 0, 0, 800, 600);
+        };
+        img.src = base64;
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCreateProject = async () => {
+    if (!user) return;
+    const data = await api.projects.create(user.id, 'Новый проект');
+    if (data.project) {
+      loadProjects(user.id);
+    }
+  };
+
+  const handleActivateFamilyCode = async () => {
+    if (!user) return;
+    try {
+      await api.family.activateCode(user.id, inputFamilyCode);
+      loadChildren(user.id);
+      loadChildrenProjects(user.id);
+      setShowFamilyDialog(false);
+      setInputFamilyCode('');
+      alert('Ребенок успешно добавлен!');
+    } catch (error) {
+      alert('Неверный код');
+    }
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (selectedTool !== 'draw') return;
+    setIsDrawing(true);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    ctx.beginPath();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || selectedTool !== 'draw') return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    ctx.strokeStyle = drawColor;
+    ctx.lineWidth = drawWidth;
+    ctx.lineCap = 'round';
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const addStickerToCanvas = (emoji: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.font = '80px Arial';
+    ctx.fillText(emoji, Math.random() * 600, Math.random() * 500);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    await api.users.delete(user.id);
+    localStorage.removeItem('photoStudioUser');
+    setUser(null);
+    setShowDeleteDialog(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('photoStudioUser');
+    setUser(null);
+    setProjects([]);
+    setChildren([]);
+    setChildrenProjects([]);
+    setCurrentImage(null);
+  };
+
+  if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-purple-900 via-blue-900 to-cyan-900">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwgMjU1LCAyNTUsIDAuMSkiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] opacity-20"></div>
-        
-        <Card className="w-full max-w-md glass-panel-strong border-white/20 animate-scale-in relative z-10">
+        <Card className="w-full max-w-md glass-panel-strong border-white/20">
           <div className="p-8">
             <div className="text-center mb-8">
-              <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center animate-glow">
+              <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center">
                 <Icon name="Image" size={40} className="text-white" />
               </div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent mb-2">
@@ -66,11 +279,13 @@ const Index = () => {
                     type="tel" 
                     placeholder="+7 (999) 123-45-67" 
                     className="glass-panel border-white/20"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
                   />
                 </div>
                 <Button 
-                  className="w-full bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600"
-                  onClick={() => setIsAuthenticated(true)}
+                  className="w-full bg-gradient-to-r from-purple-500 to-cyan-500"
+                  onClick={handleLogin}
                 >
                   Войти
                 </Button>
@@ -83,6 +298,8 @@ const Index = () => {
                     id="firstName" 
                     placeholder="Иван" 
                     className="glass-panel border-white/20"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -91,6 +308,8 @@ const Index = () => {
                     id="lastName" 
                     placeholder="Иванов" 
                     className="glass-panel border-white/20"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -100,11 +319,23 @@ const Index = () => {
                     type="tel" 
                     placeholder="+7 (999) 123-45-67" 
                     className="glass-panel border-white/20"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
                   />
                 </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="isChild"
+                    checked={isChildAccount}
+                    onChange={(e) => setIsChildAccount(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <Label htmlFor="isChild">Детский аккаунт</Label>
+                </div>
                 <Button 
-                  className="w-full bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600"
-                  onClick={() => setIsAuthenticated(true)}
+                  className="w-full bg-gradient-to-r from-purple-500 to-cyan-500"
+                  onClick={handleRegister}
                 >
                   Зарегистрироваться
                 </Button>
@@ -127,263 +358,338 @@ const Index = () => {
             <h1 className="text-xl font-bold">AI Photo Studio</h1>
           </div>
           
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" className="glass-panel">
-              <Icon name="Upload" size={18} className="mr-2" />
-              Загрузить фото
-            </Button>
-            <Button variant="ghost" size="icon" className="glass-panel">
-              <Icon name="User" size={20} />
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="glass-panel">
+                <Icon name="MoreVertical" size={20} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="glass-panel-strong w-48">
+              <DropdownMenuItem onClick={() => setActiveTab('home')}>
+                <Icon name="Home" size={16} className="mr-2" />
+                Главная
+              </DropdownMenuItem>
+              {!user.isChild && (
+                <DropdownMenuItem onClick={() => setActiveTab('family')}>
+                  <Icon name="Users" size={16} className="mr-2" />
+                  Семья
+                </DropdownMenuItem>
+              )}
+              {user.isChild && (
+                <DropdownMenuItem onClick={() => setActiveTab('family')}>
+                  <Icon name="Users" size={16} className="mr-2" />
+                  Код семьи
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => setActiveTab('settings')}>
+                <Icon name="Settings" size={16} className="mr-2" />
+                Настройки
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleLogout}>
+                <Icon name="LogOut" size={16} className="mr-2" />
+                Выйти
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
-      <div className="flex-1 flex">
-        <aside className="w-20 glass-panel-strong border-r border-white/10 flex flex-col items-center py-6 gap-4">
-          {[
-            { id: 'editor', icon: 'Sparkles', label: 'Редактор' },
-            { id: 'gallery', icon: 'LayoutGrid', label: 'Галерея' },
-            { id: 'settings', icon: 'Settings', label: 'Настройки' },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={cn(
-                'w-14 h-14 rounded-xl flex flex-col items-center justify-center gap-1 transition-all',
-                activeTab === item.id
-                  ? 'bg-gradient-to-br from-purple-500 to-cyan-500 text-white'
-                  : 'glass-panel hover:bg-white/10'
-              )}
-            >
-              <Icon name={item.icon} size={24} />
-              <span className="text-[10px]">{item.label}</span>
-            </button>
-          ))}
-        </aside>
+      <div className="flex-1 overflow-auto p-6">
+        {activeTab === 'home' && (
+          <div className="max-w-6xl mx-auto">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold mb-2">Мои проекты</h2>
+                <p className="text-gray-400">Все ваши фото в одном месте</p>
+              </div>
+              <Button
+                onClick={handleCreateProject}
+                className="bg-gradient-to-r from-purple-500 to-cyan-500"
+              >
+                <Icon name="Plus" size={18} className="mr-2" />
+                Создать проект
+              </Button>
+            </div>
 
-        <main className="flex-1 flex">
-          {activeTab === 'editor' && (
-            <>
-              <div className="w-80 glass-panel-strong border-r border-white/10 p-6 overflow-y-auto">
-                <h2 className="text-lg font-semibold mb-4">Инструменты</h2>
-                
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  {tools.map((tool) => (
-                    <button
-                      key={tool.id}
-                      onClick={() => setSelectedTool(tool.id)}
-                      className={cn(
-                        'p-4 rounded-xl flex flex-col items-center gap-2 transition-all',
-                        selectedTool === tool.id
-                          ? 'bg-gradient-to-br from-purple-500/20 to-cyan-500/20 border-2 border-purple-500'
-                          : 'glass-panel hover:bg-white/10'
-                      )}
-                    >
-                      <Icon name={tool.icon} size={28} className={tool.color} />
-                      <span className="text-sm">{tool.label}</span>
-                    </button>
-                  ))}
-                </div>
+            {currentImage && (
+              <Card className="glass-panel-strong p-6 mb-6">
+                <div className="space-y-4">
+                  <div className="flex gap-3 flex-wrap">
+                    {[
+                      { id: 'draw', icon: 'Pencil', label: 'Рисование' },
+                      { id: 'stickers', icon: 'Smile', label: 'Стикеры' },
+                      { id: 'filters', icon: 'Contrast', label: 'Фильтры' },
+                      { id: 'effects', icon: 'Wand2', label: 'Эффекты' },
+                    ].map((tool) => (
+                      <Button
+                        key={tool.id}
+                        variant={selectedTool === tool.id ? 'default' : 'outline'}
+                        onClick={() => setSelectedTool(tool.id)}
+                        className="glass-panel"
+                      >
+                        <Icon name={tool.icon} size={18} className="mr-2" />
+                        {tool.label}
+                      </Button>
+                    ))}
+                  </div>
 
-                {selectedTool === 'filters' && (
-                  <div className="space-y-4 animate-fade-in">
-                    <h3 className="text-sm font-semibold mb-3">Настройки</h3>
-                    
-                    <div className="space-y-3">
+                  {selectedTool === 'draw' && (
+                    <div className="glass-panel p-4 space-y-3">
                       <div>
-                        <Label className="text-xs">Яркость: {brightness[0]}%</Label>
-                        <Slider 
-                          value={brightness} 
-                          onValueChange={setBrightness}
-                          max={200}
-                          step={1}
-                          className="mt-2"
-                        />
+                        <Label>Цвет</Label>
+                        <div className="flex gap-2 mt-2">
+                          {['#8B5CF6', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#EC4899'].map((color) => (
+                            <button
+                              key={color}
+                              onClick={() => setDrawColor(color)}
+                              className={cn(
+                                'w-8 h-8 rounded-full border-2',
+                                drawColor === color ? 'border-white' : 'border-transparent'
+                              )}
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
                       </div>
-                      
                       <div>
-                        <Label className="text-xs">Контраст: {contrast[0]}%</Label>
-                        <Slider 
-                          value={contrast} 
-                          onValueChange={setContrast}
-                          max={200}
-                          step={1}
-                          className="mt-2"
-                        />
-                      </div>
-                      
-                      <div>
-                        <Label className="text-xs">Насыщенность: {saturation[0]}%</Label>
-                        <Slider 
-                          value={saturation} 
-                          onValueChange={setSaturation}
-                          max={200}
-                          step={1}
+                        <Label>Толщина: {drawWidth}px</Label>
+                        <Slider
+                          value={[drawWidth]}
+                          onValueChange={(v) => setDrawWidth(v[0])}
+                          min={1}
+                          max={50}
                           className="mt-2"
                         />
                       </div>
                     </div>
+                  )}
 
-                    <div className="pt-4 border-t border-white/10">
-                      <h3 className="text-sm font-semibold mb-3">Пресеты</h3>
-                      <div className="grid grid-cols-2 gap-2">
-                        {filters.map((filter) => (
+                  {selectedTool === 'stickers' && (
+                    <div className="glass-panel p-4">
+                      <div className="grid grid-cols-5 gap-3">
+                        {STICKERS.map((sticker) => (
                           <button
-                            key={filter.name}
-                            className="p-2 rounded-lg glass-panel hover:bg-white/10 text-xs transition-all"
+                            key={sticker.emoji}
+                            onClick={() => addStickerToCanvas(sticker.emoji)}
+                            className="glass-panel p-4 text-4xl hover:bg-white/10 rounded-xl transition-all"
                           >
-                            {filter.name}
+                            {sticker.emoji}
                           </button>
                         ))}
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {selectedTool === 'ai' && (
-                  <div className="space-y-4 animate-fade-in">
-                    <h3 className="text-sm font-semibold mb-3">AI Инструменты</h3>
-                    <div className="space-y-2">
-                      <Button className="w-full justify-start glass-panel hover:bg-white/10" variant="ghost">
-                        <Icon name="Sparkles" size={18} className="mr-2" />
-                        Улучшить качество
-                      </Button>
-                      <Button className="w-full justify-start glass-panel hover:bg-white/10" variant="ghost">
-                        <Icon name="Eraser" size={18} className="mr-2" />
-                        Удалить фон
-                      </Button>
-                      <Button className="w-full justify-start glass-panel hover:bg-white/10" variant="ghost">
-                        <Icon name="Zap" size={18} className="mr-2" />
-                        Автокоррекция
-                      </Button>
-                      <Button className="w-full justify-start glass-panel hover:bg-white/10" variant="ghost">
-                        <Icon name="Wand2" size={18} className="mr-2" />
-                        Стилизация
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex-1 flex items-center justify-center p-8 bg-gradient-to-br from-purple-950/20 via-blue-950/20 to-cyan-950/20">
-                <div className="relative">
-                  <div className="w-[600px] h-[400px] rounded-2xl glass-panel-strong flex items-center justify-center border-2 border-dashed border-white/20">
-                    <div className="text-center">
-                      <Icon name="Upload" size={64} className="mx-auto mb-4 text-gray-500" />
-                      <p className="text-lg mb-2">Загрузите фото для редактирования</p>
-                      <p className="text-sm text-gray-500">PNG, JPG или GIF до 10MB</p>
-                      <Button className="mt-4 bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600">
-                        Выбрать файл
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div className="absolute -bottom-4 -right-4 glass-panel-strong rounded-xl p-4 flex gap-2">
-                    <Button size="icon" variant="ghost" className="hover:bg-white/10">
-                      <Icon name="RotateCcw" size={20} />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="hover:bg-white/10">
-                      <Icon name="Download" size={20} />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="hover:bg-white/10">
-                      <Icon name="Share2" size={20} />
-                    </Button>
-                  </div>
+                  <canvas
+                    ref={canvasRef}
+                    width={800}
+                    height={600}
+                    className="w-full border-2 border-white/20 rounded-xl cursor-crosshair"
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                  />
                 </div>
-              </div>
-            </>
-          )}
+              </Card>
+            )}
 
-          {activeTab === 'gallery' && (
-            <div className="flex-1 p-8">
-              <div className="mb-6">
-                <h2 className="text-2xl font-bold mb-2">Ваши проекты</h2>
-                <p className="text-gray-400">Все созданные изображения в одном месте</p>
-              </div>
+            {projects.length === 0 && !currentImage && (
+              <Card className="glass-panel-strong p-12 text-center">
+                <Icon name="FolderOpen" size={64} className="mx-auto mb-4 text-gray-500" />
+                <p className="text-lg mb-4">У вас пока нет проектов</p>
+                <Button onClick={handleCreateProject} className="bg-gradient-to-r from-purple-500 to-cyan-500">
+                  Создать первый проект
+                </Button>
+              </Card>
+            )}
 
+            {projects.length > 0 && (
               <div className="grid grid-cols-4 gap-6">
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                  <Card 
-                    key={i}
-                    className="glass-panel overflow-hidden group cursor-pointer hover:border-purple-500/50 transition-all"
-                  >
-                    <div className="aspect-square bg-gradient-to-br from-purple-900/30 to-cyan-900/30 relative">
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity glass-panel-strong">
-                        <Icon name="Eye" size={32} className="text-white" />
-                      </div>
-                    </div>
+                {projects.map((project) => (
+                  <Card key={project.id} className="glass-panel overflow-hidden group cursor-pointer hover:border-purple-500/50">
+                    <div className="aspect-square bg-gradient-to-br from-purple-900/30 to-cyan-900/30" />
                     <div className="p-3">
-                      <p className="text-sm font-medium">Проект {i}</p>
-                      <p className="text-xs text-gray-500">2 дня назад</p>
+                      <p className="text-sm font-medium">{project.title}</p>
+                      <p className="text-xs text-gray-500">
+                        {project.updatedAt ? new Date(project.updatedAt).toLocaleDateString() : ''}
+                      </p>
                     </div>
                   </Card>
                 ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {activeTab === 'settings' && (
-            <div className="flex-1 p-8">
-              <div className="max-w-2xl">
-                <h2 className="text-2xl font-bold mb-6">Настройки</h2>
-                
-                <div className="space-y-6">
-                  <Card className="glass-panel p-6">
-                    <h3 className="text-lg font-semibold mb-4">Профиль</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <Label>Имя</Label>
-                        <Input className="glass-panel border-white/20 mt-2" defaultValue="Иван" />
+            {!user.isChild && childrenProjects.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-xl font-bold mb-4">Проекты детей</h3>
+                <div className="grid grid-cols-4 gap-6">
+                  {childrenProjects.map((project) => (
+                    <Card key={project.id} className="glass-panel overflow-hidden">
+                      <div className="aspect-square bg-gradient-to-br from-pink-900/30 to-orange-900/30" />
+                      <div className="p-3">
+                        <p className="text-sm font-medium">{project.title}</p>
+                        <p className="text-xs text-gray-500">{project.childName}</p>
                       </div>
-                      <div>
-                        <Label>Фамилия</Label>
-                        <Input className="glass-panel border-white/20 mt-2" defaultValue="Иванов" />
-                      </div>
-                      <div>
-                        <Label>Телефон</Label>
-                        <Input className="glass-panel border-white/20 mt-2" defaultValue="+7 (999) 123-45-67" disabled />
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card className="glass-panel p-6">
-                    <h3 className="text-lg font-semibold mb-4">Настройки редактора</h3>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Автосохранение</p>
-                          <p className="text-sm text-gray-500">Сохранять изменения автоматически</p>
-                        </div>
-                        <Button variant="outline" size="sm" className="glass-panel">
-                          Включено
-                        </Button>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Качество экспорта</p>
-                          <p className="text-sm text-gray-500">Максимальное качество изображений</p>
-                        </div>
-                        <Button variant="outline" size="sm" className="glass-panel">
-                          Высокое
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Button 
-                    variant="destructive" 
-                    onClick={() => setIsAuthenticated(false)}
-                    className="w-full"
-                  >
-                    Выйти из аккаунта
-                  </Button>
+                    </Card>
+                  ))}
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'family' && (
+          <div className="max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">Семья</h2>
+            
+            {user.isChild ? (
+              <Card className="glass-panel-strong p-8 text-center">
+                <Icon name="Users" size={64} className="mx-auto mb-4 text-purple-400" />
+                <h3 className="text-xl font-bold mb-2">Ваш код семьи</h3>
+                <p className="text-gray-400 mb-6">Отправьте этот код родителям</p>
+                <div className="text-5xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent mb-6">
+                  {familyCode || 'Загрузка...'}
+                </div>
+                <p className="text-sm text-gray-500">
+                  Родители смогут видеть ваши проекты после активации кода
+                </p>
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                <Card className="glass-panel-strong p-6">
+                  <h3 className="text-lg font-semibold mb-4">Добавить ребенка</h3>
+                  <div className="flex gap-3">
+                    <Input
+                      placeholder="Введите код семьи"
+                      value={inputFamilyCode}
+                      onChange={(e) => setInputFamilyCode(e.target.value)}
+                      className="glass-panel border-white/20"
+                    />
+                    <Button onClick={handleActivateFamilyCode} className="bg-gradient-to-r from-purple-500 to-cyan-500">
+                      Активировать
+                    </Button>
+                  </div>
+                </Card>
+
+                {children.length > 0 && (
+                  <Card className="glass-panel-strong p-6">
+                    <h3 className="text-lg font-semibold mb-4">Подключенные дети</h3>
+                    <div className="space-y-3">
+                      {children.map((child) => (
+                        <div key={child.id} className="glass-panel p-4 flex items-center justify-between">
+                          <div>
+                            <p className="font-medium">{child.firstName} {child.lastName}</p>
+                            <p className="text-sm text-gray-500">Код: {child.familyCode}</p>
+                          </div>
+                          <Icon name="CheckCircle" size={20} className="text-green-400" />
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">Настройки</h2>
+            
+            <div className="space-y-6">
+              <Card className="glass-panel-strong p-6">
+                <h3 className="text-lg font-semibold mb-4">Профиль</h3>
+                <div className="space-y-4">
+                  <div>
+                    <Label>Имя</Label>
+                    <Input className="glass-panel border-white/20 mt-2" defaultValue={user.firstName} />
+                  </div>
+                  <div>
+                    <Label>Фамилия</Label>
+                    <Input className="glass-panel border-white/20 mt-2" defaultValue={user.lastName} />
+                  </div>
+                  <div>
+                    <Label>Телефон</Label>
+                    <Input className="glass-panel border-white/20 mt-2" defaultValue={user.phone} disabled />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="isChildSetting"
+                      checked={user.isChild}
+                      readOnly
+                      className="w-4 h-4"
+                    />
+                    <Label htmlFor="isChildSetting">Детский аккаунт</Label>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="glass-panel-strong p-6">
+                <h3 className="text-lg font-semibold mb-4">Тема оформления</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  {THEMES.map((theme) => (
+                    <button
+                      key={theme.id}
+                      onClick={() => handleThemeChange(theme.id)}
+                      className={cn(
+                        'glass-panel p-4 rounded-xl text-left transition-all hover:bg-white/10',
+                        user.theme === theme.id && 'border-2 border-purple-500'
+                      )}
+                    >
+                      <div className="flex gap-2 mb-2">
+                        {theme.colors.map((color) => (
+                          <div key={color} className="w-6 h-6 rounded-full" style={{ backgroundColor: color }} />
+                        ))}
+                      </div>
+                      <p className="font-medium">{theme.name}</p>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+
+              <Button variant="destructive" onClick={() => setShowDeleteDialog(true)} className="w-full">
+                Удалить аккаунт
+              </Button>
             </div>
-          )}
-        </main>
+          </div>
+        )}
       </div>
+
+      <div className="glass-panel-strong border-t border-white/10 p-4 flex justify-center">
+        <Button
+          onClick={() => fileInputRef.current?.click()}
+          className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-500 to-cyan-500"
+          size="icon"
+        >
+          <Icon name="Plus" size={32} />
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileUpload}
+          className="hidden"
+        />
+      </div>
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="glass-panel-strong">
+          <DialogHeader>
+            <DialogTitle>Удалить аккаунт?</DialogTitle>
+          </DialogHeader>
+          <p className="text-gray-400 mb-4">Это действие нельзя отменить</p>
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)} className="flex-1">
+              Отмена
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteAccount} className="flex-1">
+              Удалить
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
